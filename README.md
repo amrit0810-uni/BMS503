@@ -1,2 +1,0 @@
-# BMS503
-assignment
