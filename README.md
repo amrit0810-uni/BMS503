@@ -376,14 +376,17 @@ qc_thresholds:
 | 1–5 Mb (bacteria) | 75–100 bp | 30–32 | 2–3% |
 | 5–20 Mb (fungi) | 100–150 bp | 30–32 | 2% |
 
-### Performance by organism (15 samples, all cores)
+### Performance by organism (16 vCPUs, observed)
 
-| Organism | Genome size | Mapping | Phylogeny | Total |
-|----------|------------|---------|-----------|-------|
-| SARS-CoV-2 | 29.9 kb | 1–2 min | 2–5 min | ~40 min |
-| Influenza | 13.6 kb | < 1 min | 2–3 min | ~30 min |
-| M. tuberculosis | 4.4 Mb | 5–10 min | 5–10 min | 2–3 hrs |
-| Candida auris | 12 Mb | 10–15 min | 5–10 min | 3–4 hrs |
+| Organism | Genome size | Samples | Total time |
+|----------|------------|---------|------------|
+| SARS-CoV-2 | 29.9 kb | 16 | ~2 min 30s |
+| SARS-CoV-2 | 29.9 kb | 27 | ~2 min 50s |
+| Influenza | 13.6 kb | — | Expected faster (smaller genome) |
+| M. tuberculosis | 4.4 Mb | — | Significantly longer (150× larger genome) |
+| Candida auris | 12 Mb | — | Significantly longer (400× larger genome) |
+
+Timings for non-SARS-CoV-2 organisms are estimates; actual runtime scales with genome size and read depth.
 
 ### Where to find reference genomes
 
@@ -415,17 +418,19 @@ With 16 cores, each parallel stage fills all cores cleanly (e.g. 4 concurrent BW
 | BWA-MEM2 mapping | 2–4 GB |
 | bcftools | 1–2 GB |
 | Nextclade | 2–4 GB |
-| FastTree | 0.5–1 GB |
+| VeryFastTree | 0.5–1 GB |
 | **Total** | **~8–16 GB** |
 
-### Time vs sample count (16 cores)
+### Time vs sample count (SARS-CoV-2, 16 vCPUs)
 
-| Samples | Approximate time |
-|---------|-----------------|
-| 10 | ~12 min |
-| 15 | ~20 min |
-| 30 | ~40 min |
-| 100 | ~2 hrs 15 min |
+| Samples | Time | Notes |
+|---------|------|-------|
+| 16 | ~2 min 30s | Observed |
+| 27 | ~2 min 50s | Observed |
+| ~50 | ~4–5 min | Estimated |
+| ~100 | ~8–10 min | Estimated |
+
+Time scales slowly with sample count because per-sample stages (QC, mapping, variant calling) run fully in parallel — the bottleneck is Nextclade alignment and VeryFastTree, both of which are single multi-threaded jobs that grow with alignment size, not sample count linearly.
 
 ### Optimisation tips
 
@@ -479,41 +484,72 @@ cp -r . ../BMS503_flu
 
 ## Sharing the Pipeline
 
-### What to include (git / submission zip)
+### GitHub repository
+
+The pipeline is hosted at:
+
+**https://github.com/amrit0810-uni/BMS503**
+
+Previous iteration archives (zip snapshots) are stored in `previous_iterations/`.
+
+### Downloading the pipeline (new team members)
+
+**Option A — Clone (recommended, keeps git history):**
+
+```bash
+git clone https://github.com/amrit0810-uni/BMS503.git
+cd BMS503
+bash setup.sh
+```
+
+**Option B — Download as zip (no git required):**
+
+1. Go to https://github.com/amrit0810-uni/BMS503
+2. Click **Code → Download ZIP**
+3. Extract and run:
+
+```bash
+unzip BMS503-main.zip
+cd BMS503-main
+bash setup.sh   # use bash, not ./ — ensures permissions are set
+```
+
+**Option C — Previous iteration zip:**
+
+Visit `previous_iterations/` on GitHub to download a specific archived version.
+
+### What is tracked in git
 
 ```
 ✅ Snakefile
 ✅ config/config.yaml, config/env_all.yml
 ✅ workflow/scripts/*.py
 ✅ setup.sh, run_pipeline.sh, clean.sh
-✅ README.md, CHANGELOG.md
+✅ README.md, QUICKSTART.md, CHANGELOG.md
+✅ previous_iterations/   — archived zip snapshots
 ```
 
-### What to exclude
+Data files are excluded automatically by `.gitignore`:
 
 ```
-❌ data/raw/        — large sequencing files
-❌ data/reference/  — large genome files
-❌ results/         — auto-generated
+❌ data/            — all sequencing data, references, databases
+❌ results/         — auto-generated outputs
 ❌ .snakemake/      — Snakemake cache
+❌ *.pdf            — assessment documents
 ```
 
-The provided `.gitignore` handles this automatically.
-
-### Getting the pipeline (new team members)
+### Pushing updates
 
 ```bash
-# Option A: Clone from Git
-git clone https://github.com/your-org/BMS503-pipeline.git
-
-# Option B: Copy folder
-cp -r /path/to/BMS503 /new/location/BMS503
+git add <changed files>
+git commit -m "describe your changes"
+git push
 ```
 
 ### Distribution checklist
 
 - [ ] Run `bash setup.sh` on target machine (creates env + fixes permissions)
-- [ ] `config/config.yaml` has reasonable defaults
+- [ ] `config/config.yaml` has correct organism and thresholds
 - [ ] Tested on a fresh system
 - [ ] `.gitignore` prevents large data commits
 
