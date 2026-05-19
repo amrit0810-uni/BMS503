@@ -3,15 +3,8 @@
 # Assessment documents (keep local only)
 *.pdf
 
-# Data files - these are usually large and shouldn't be committed
-data/raw/*.fastq
-data/raw/*.fastq.gz
-data/raw/*.fq
-data/raw/*.fq.gz
-data/reference/*.fasta
-data/reference/*.fa
-data/reference/*.fna
-data/reference/*.ffn
+# Data files — input sequences, references, and databases (not committed)
+data/
 
 # Results - these are generated, not committed
 results/
