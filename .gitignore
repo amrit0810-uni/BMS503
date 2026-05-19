@@ -1,0 +1,60 @@
+# BMS503 Genomic Surveillance Pipeline - Git Ignore
+
+# Assessment documents (keep local only)
+*.pdf
+
+# Data files - these are usually large and shouldn't be committed
+data/raw/*.fastq
+data/raw/*.fastq.gz
+data/raw/*.fq
+data/raw/*.fq.gz
+data/reference/*.fasta
+data/reference/*.fa
+data/reference/*.fna
+data/reference/*.ffn
+
+# Results - these are generated, not committed
+results/
+.snakemake/
+
+# Conda environment caches
+.conda/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.eggs/
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.log
+*.bak
+
+# BAM index files (generated from BAM)
+*.bam.bai
+*.bai
+
+# VCF index files (generated)
+*.vcf.gz.csi
+*.vcf.gz.tbi
+
+# WHAT TO COMMIT
+# ✅ Snakefile
+# ✅ config/config.yaml (template - customize for your project)
+# ✅ config/env_*.yml (conda environment definitions)
+# ✅ workflow/scripts/*.py (pipeline helper scripts)
+# ✅ README.md, QUICKSTART.md, ORGANISM_GUIDE.md
+# ✅ run_pipeline.sh, setup.sh, clean.sh
