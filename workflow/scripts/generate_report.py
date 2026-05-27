@@ -575,7 +575,7 @@ def generate_html_report(output_file, qc_summary, qc_metrics, variants_dir,
     <h2>2. Variant Analysis</h2>
     <p>Total variant sites identified: <strong>{total_variants}</strong>
        (mean {avg_variants:.1f} per sample).
-       Variants filtered at minimum allele frequency 5% and minimum quality 30.</p>
+       Variants filtered at minimum allele frequency 10% and minimum quality 30.</p>
     <p>Per-sample VCF files: <code>results/variants/</code></p>
 </div>
 
