@@ -336,7 +336,7 @@ watch -n 5 'ls -lah results/*'
 
 | Result | Location |
 |--------|----------|
-| **Main Report** | `results/reports/diagnostic_report.html` ⭐ |
+| **Main Report** | `results/reports/diagnostic_report.html` |
 | Per-sample QC | `results/qc/*_fastp.html` |
 | QC summary | `results/qc/qc_summary.txt` |
 | Phylogenetic Tree | `results/phylogeny/phylogenetic_tree.nwk.svg` |
@@ -485,23 +485,7 @@ Data files are excluded automatically by `.gitignore`:
 ❌ data/            — all sequencing data, references, databases
 ❌ results/         — auto-generated outputs
 ❌ .snakemake/      — Snakemake cache
-❌ *.pdf            — assessment documents
 ```
-
-### Pushing updates
-
-```bash
-git add <changed files>
-git commit -m "describe your changes"
-git push
-```
-
-### Distribution checklist
-
-- [ ] Run `bash setup.sh` on target machine (creates env + fixes permissions)
-- [ ] `config/config.yaml` thresholds are appropriate for your samples
-- [ ] Tested on a fresh system
-- [ ] `.gitignore` prevents large data commits
 
 ---
 
@@ -584,11 +568,11 @@ nextclade --version
 
 ### Success indicators
 
-- [ ] fastp QC reports: `ls results/qc/*_fastp.html`
-- [ ] BAM files: `ls results/mapping/*.bam`
-- [ ] Variants: `ls results/variants/*.vcf.gz`
-- [ ] Tree: `ls results/phylogeny/phylogenetic_tree.nwk`
-- [ ] Report: `ls results/reports/diagnostic_report.html`
+- fastp QC reports: `ls results/qc/*_fastp.html`
+- BAM files: `ls results/mapping/*.bam`
+- Variants: `ls results/variants/*.vcf.gz`
+- Tree: `ls results/phylogeny/phylogenetic_tree.nwk`
+- Report: `ls results/reports/diagnostic_report.html`
 
 ---
 
