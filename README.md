@@ -29,6 +29,19 @@
 
 **Requirements**: Linux/Unix or WSL, [Miniconda](https://docs.conda.io/en/latest/miniconda.html) or Anaconda, mamba, 5–10 GB free disk space
 
+### Get the code
+
+Clone the repository and enter the project directory:
+
+```bash
+git clone https://github.com/amrit0810-uni/BMS503.git
+cd BMS503
+```
+
+If you don't have git, you can also download a zip from the repository page — see [Sharing the Pipeline](#sharing-the-pipeline) for details.
+
+### Install conda (if not already installed)
+
 If you don't have conda, install Miniconda first:
 
 ```bash
