@@ -634,7 +634,7 @@ Member Name: Amrit Nikhil Siva Balan 36007875
   Supporting: Presentation preparation
 Member Name: Sherry Shams 34266687
   Lead: Stress testing pipeline
-  Supporting: Presentation preparations
+  Supporting: Presentation preparation
 Member Name: Sughanda Sughanda 35761585
   Lead: Alternate pipeline development
   Supporting: Presentation preparation
