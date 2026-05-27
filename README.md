@@ -1,6 +1,6 @@
 # BMS503 Genomic Surveillance Pipeline
 
-**Version v1.8 — Production Ready**  
+**Version v1.9 — Production Ready**  
 **See [CHANGELOG.md](CHANGELOG.md) for the complete history of all bug fixes and improvements.**
 
 ---
@@ -121,7 +121,7 @@ Input FASTQ Files
 │ - Consensus sequence generation          │
 │ - Reference-guided alignment (Nextclade) │
 │ - Pango lineage assignment               │
-│ - Incremental tree building (VeryFastTree) │
+│ - Incremental tree building(VeryFastTree)│
 │ - Tree visualization (SVG)               │
 └──────────────────────────────────────────┘
        ↓
@@ -469,10 +469,6 @@ cd BMS503-main
 bash setup.sh   # use bash, not ./ — ensures permissions are set
 ```
 
-**Option C — Previous iteration zip:**
-
-Visit `previous_iterations/` on GitHub to download a specific archived version.
-
 ### What is tracked in git
 
 ```
@@ -481,7 +477,6 @@ Visit `previous_iterations/` on GitHub to download a specific archived version.
 ✅ workflow/scripts/*.py
 ✅ setup.sh, run_pipeline.sh, clean.sh
 ✅ README.md, QUICKSTART.md, CHANGELOG.md
-✅ previous_iterations/   — archived zip snapshots
 ```
 
 Data files are excluded automatically by `.gitignore`:
@@ -633,20 +628,22 @@ nextclade --version
 ## Statement of Contributions
 
 ### Group Members and Roles
-
-[**To be completed by group**: Each member should be listed with their primary contributions]
-
 ```
-Member Name: [Name]
-  Lead:       [Components where they had primary responsibility]
-  Supporting: [Components they helped develop]
-  Validation: [Testing and verification work]
+Member Name: Amrit Nikhil Siva Balan 36007875
+  Lead: Pipeline development, Documentation creation
+  Supporting: Presentation preparation
+Member Name: Sherry Shams 34266687
+  Lead: Stress testing pipeline
+  Supporting: Presentation preparations
+Member Name: Sughanda Sughanda 35761585
+  Lead: Alternate pipeline development
+  Supporting: Presentation preparation
 ```
 
 ---
 
-**Last Updated**: May 19, 2026  
-**Pipeline version**: v1.8
+**Last Updated**: May 27, 2026  
+**Pipeline version**: v1.9
 
 ---
 
