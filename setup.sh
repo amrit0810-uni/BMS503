@@ -8,6 +8,7 @@
 #   2. Creates the bms503-all conda environment (skips if already exists)
 #   3. Applies a runtime fix for a bcftools/GSL library mismatch
 #   4. Creates required data directories
+#   5. Downloads the Nextclade SARS-CoV-2 dataset (skips if already present)
 #
 # After this completes, run the pipeline with:  ./run_pipeline.sh
 
@@ -54,15 +55,17 @@ fi
 CONDA_BASE=$(conda info --base)
 print_ok "conda found: $CONDA_BASE"
 
-# Prefer mamba for faster solves
-if command -v mamba &> /dev/null; then
-    PKG_CMD="mamba"
-    print_ok "mamba found — will use for faster environment creation"
-else
-    PKG_CMD="conda"
-    print_warn "mamba not found — using conda (slower). Install mamba with:"
-    print_warn "  conda install -n base -c conda-forge mamba"
+# Require mamba for reliable environment creation
+if ! command -v mamba &> /dev/null; then
+    print_err "mamba not found. Install it first:"
+    echo ""
+    echo "  conda install -n base -c conda-forge mamba"
+    echo ""
+    echo "Then re-run:  bash setup.sh"
+    exit 1
 fi
+PKG_CMD="mamba"
+print_ok "mamba found"
 echo ""
 
 # ── Step 3: Create conda environment ───────────────────────────────────────────
@@ -93,11 +96,28 @@ echo ""
 
 # ── Step 5: Create required directories ────────────────────────────────────────
 print_info "Creating data directories..."
-mkdir -p data/raw data/reference data/reference_db logs
+mkdir -p data/raw data/reference data/reference_db data/nextclade_db logs
 print_ok "data/raw/         ← place FASTQ files here"
 print_ok "data/reference/   ← place reference genome here"
 print_ok "data/reference_db/ (pipeline database — do not edit)"
 print_ok "logs/             (pipeline logs)"
+echo ""
+
+# ── Step 6: Download Nextclade SARS-CoV-2 dataset ──────────────────────────────
+NEXTCLADE_DB="data/nextclade_db/sars-cov-2"
+if [ -f "${NEXTCLADE_DB}/pathogen.json" ]; then
+    print_ok "Nextclade SARS-CoV-2 dataset already present — skipping download"
+else
+    print_info "Downloading Nextclade SARS-CoV-2 dataset (requires internet)..."
+    "${ENV_DIR}/bin/nextclade" dataset get \
+        --name sars-cov-2 \
+        --output-dir "$NEXTCLADE_DB" 2>&1 | tail -3
+    if [ -f "${NEXTCLADE_DB}/pathogen.json" ]; then
+        print_ok "Nextclade dataset downloaded to ${NEXTCLADE_DB}"
+    else
+        print_warn "Nextclade dataset download failed — pipeline will download it at runtime instead"
+    fi
+fi
 echo ""
 
 # ── Done ───────────────────────────────────────────────────────────────────────

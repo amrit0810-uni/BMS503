@@ -1067,6 +1067,70 @@ FastTree is single-threaded, leaving all but one core idle during tree building.
 
 ---
 
+## Phase 13 — Distribution, Documentation & Bug Fixes (v1.9, May 27, 2026)
+
+### Plug-and-play distribution
+
+**User Requests**: *"how do I make the file easily downloadable"*, *"make gitignore hide the data that I'm using"*
+
+- `.gitignore` updated: entire `data/` directory excluded (all FASTQ, FASTA, reference DB, Nextclade DB); `*.pdf` added to exclude assessment documents; `previous_iterations/` excluded
+- `git archive` used to produce a clean code-only zip (~52 KB) with no data files
+- Pipeline pushed to GitHub at `https://github.com/amrit0810-uni/BMS503`
+- `QUICKSTART.md` created: 3-step reference card (bash setup.sh → copy data → ./run_pipeline.sh)
+
+### setup.sh hardening
+
+**User Requests**: *"make the mamba download a requirement"*, *"can you include the Nextclade dataset download in the setup?"*
+
+- **Mamba made a hard requirement**: script now exits with an error and install instructions if `mamba` is not found; removed the conda fallback path
+- **Nextclade SARS-CoV-2 dataset auto-downloaded** at setup time using the activated environment's `nextclade` binary; skipped with a message if already present; non-fatal warning on failure (pipeline falls back to live download at runtime)
+- `mkdir -p` call extended to include `data/nextclade_db`
+
+### SARS-CoV-2 lock-down
+
+**User Request**: *"look through all files and remove any references to usage on other organisms"*
+
+- `config/config.yaml`: header updated to `BMS503 Pipeline Configuration — SARS-CoV-2`; dead/unused sections removed (`mapping`, `variants.min_variant_quality`, `phylogeny`, `output`, `resources`); `organism` comment stripped of example list; active sections only (`qc_thresholds`, `variants.min_allele_frequency`, `nextclade_dataset_dir`)
+- `README.md`: "organism-agnostic" → "for SARS-CoV-2 genomic surveillance" throughout; all non-SARS-CoV-2 organism references removed
+- `Snakefile`: `nextclade_align` docstring updated to remove manual download instructions
+
+### Tool Selection Rationale section
+
+**User Requests**: *"add a section in the readme for reasoning of tool choices"*, *"add the type of files each tool uses and produces"*
+
+- New `## 4. Tool Selection Rationale` section added to README with a TOC entry
+- Each tool (fastp, BWA-MEM2, SAMtools/BCFtools, Nextclade, VeryFastTree, Snakemake) includes: I/O file flow table, rationale, alternative tools considered, and in-text APA7 citation
+- Moved up in TOC; all subsequent section numbers updated
+
+### QC threshold rationale and references
+
+**User Requests**: *"double check that all qc and other thresholds are relevant for covid"*, *"add to the configuration section where the thresholds were from"*, *"do references in APA7 and also use PHA4GE guidelines as a reference"*
+
+- `## 5. Configuration` updated with per-parameter rationale table citing Tyson et al. (2020), Schirmer et al. (2016), WHO (2021), and Griffiths et al. (2022) (PHA4GE)
+- `## 15. References` section added at end of README with all 13 sources in APA7 format
+- TOC entry added for References
+- All in-text citations converted to clickable anchor links (e.g. `([Chen, 2025](#ref-chen-2025))`)
+- HTML `<a id="ref-xxx">` anchors added to each reference entry
+
+### Bug fixes
+
+**User Request**: *"why was sample 22 failing not flagged out in the automated interpretation"*
+
+- `workflow/scripts/generate_report.py`: removed `[:3]` slice on `failing_s` — previously only the first 3 failing samples were listed in the interpretation text; any 4th+ failing sample (e.g. sample 22) was silently dropped
+
+**User Request**: *"fix the mapping threshold mismatch"*
+
+- `workflow/scripts/qc_assessment.py`: hardcoded `min_mapped_pct` corrected from `20.0` to `50.0` to match `config/config.yaml` and README documentation
+
+### First-run label in diagnostic report
+
+**User Request**: *"make the first run be flagged as first run instead of no new samples detected"*
+
+- `generate_report.py`: **New Samples This Run** summary field now shows `"First run — all N samples newly processed"` on the initial run instead of `"N/A (first run)"`
+- Table legend updated to note that `[NEW]` tags are absent on first run by design
+
+---
+
 ## Version History
 
 | Version | Date | Status | Changes |
@@ -1080,6 +1144,7 @@ FastTree is single-threaded, leaving all but one core idle during tree building.
 | v1.6 | May 19, 2026 | ✅ Production | Removed boosted mode and Snakefile.boosted |
 | v1.7 | May 19, 2026 | ✅ Production | Switched FastTree → VeryFastTree (multi-threaded) |
 | v1.8 | May 19, 2026 | ✅ Production | BWA→BWA-MEM2; rule merges; full thread utilisation; ARDC section removed; tool versions updated |
+| v1.9 | May 27, 2026 | ✅ Production | GitHub distribution; setup.sh hardening (mamba req + Nextclade auto-download); SARS-CoV-2 lock-down; Tool Selection Rationale + APA7 references; failing sample bug fix; first-run label fix |
 
-**Current Status**: ✅ **PRODUCTION READY** — 27 SARS-CoV-2 samples; persistent reference database; incremental VeryFastTree; Pango lineage assignment via Nextclade; all tools using verified installed versions.
+**Current Status**: ✅ **PRODUCTION READY** — 27 SARS-CoV-2 samples; persistent reference database; incremental VeryFastTree; Pango lineage assignment via Nextclade; plug-and-play GitHub distribution.
 

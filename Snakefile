@@ -348,11 +348,9 @@ EOF
 
 rule nextclade_align:
     """
-    Align sequences against the SARS-CoV-2 reference and assign Pango lineages
-    using Nextclade.  Set nextclade_dataset_dir in config/config.yaml to a local
-    dataset directory (downloaded with: nextclade dataset get --name sars-cov-2
-    --output-dir data/nextclade_db/sars-cov-2) to avoid network access on every
-    run.  Falls back to --dataset-name (auto-download) if not set.
+    Align consensus sequences against the SARS-CoV-2 reference and assign
+    Pango lineages using Nextclade. Uses the local dataset downloaded by
+    setup.sh; falls back to a live download if the directory is absent.
     """
     input:
         combined="results/phylogeny/combined_sequences.fasta"

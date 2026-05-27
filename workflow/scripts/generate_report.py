@@ -254,7 +254,7 @@ def _interp_qc(total, pass_count, failing_s, mean_map, mean_depth, qc_status):
         )
     if failing_s:
         fail_items = []
-        for s in failing_s[:3]:
+        for s in failing_s:
             r = (qc_status or {}).get(s, {}).get("reasons", [])
             fail_items.append(f"<em>{s}</em> ({r[0] if r else 'low quality'})")
         parts.append(
@@ -535,7 +535,7 @@ def generate_html_report(output_file, qc_summary, qc_metrics, variants_dir,
     <div class="summary">
         <p><strong>Total Samples Analyzed:</strong> {len(qc_metrics)}</p>
         <p><strong>Samples Passing QC:</strong> {pass_count}</p>
-        <p><strong>New Samples This Run:</strong> {len(new_samples) if not is_first_run else "N/A (first run)"}</p>
+        <p><strong>New Samples This Run:</strong> {len(new_samples) if not is_first_run else "First run &mdash; all {len(qc_metrics)} samples newly processed"}</p>
         <p><strong>Total Variants Identified:</strong> {total_variants}</p>
         <p><strong>Average Variants per Sample:</strong> {avg_variants:.1f}</p>
     </div>
@@ -563,7 +563,7 @@ def generate_html_report(output_file, qc_summary, qc_metrics, variants_dir,
         </tr>
 {qc_table_rows}    </table>
     <p style="font-size:11px;color:#888;margin-top:8px;">
-        [NEW] = sample absent from previous run&apos;s master alignment (added this run).
+        [NEW] = sample absent from previous run&apos;s master alignment (added this run). On first run, no [NEW] tags are shown as all samples are newly processed.
         Highlighted rows are automatically detected &mdash; no config required.
         Mean Depth = mean read depth across the reference.
         Breadth = fraction of reference positions covered at &ge;1&times;.

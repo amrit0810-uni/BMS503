@@ -10,24 +10,24 @@
 1. [Prerequisites & Installation](#prerequisites--installation)
 2. [Quick Start](#quick-start)
 3. [Pipeline Architecture](#pipeline-architecture)
-4. [Prepare Your Data](#prepare-your-data)
-5. [Run the Pipeline](#run-the-pipeline)
-6. [View Results](#view-results)
-7. [Configuration](#configuration)
-8. [Organism Guide](#organism-guide)
+4. [Tool Selection Rationale](#tool-selection-rationale)
+5. [Prepare Your Data](#prepare-your-data)
+6. [Run the Pipeline](#run-the-pipeline)
+7. [View Results](#view-results)
+8. [Configuration](#configuration)
 9. [Performance Guide](#performance-guide)
-10. [Running Multiple Datasets](#running-multiple-datasets)
-11. [Sharing the Pipeline](#sharing-the-pipeline)
-12. [Troubleshooting](#troubleshooting)
-13. [Known Limitations](#known-limitations)
-14. [GenAI Contribution Statement](#genai-contribution-statement)
-15. [Statement of Contributions](#statement-of-contributions)
+10. [Sharing the Pipeline](#sharing-the-pipeline)
+11. [Troubleshooting](#troubleshooting)
+12. [Known Limitations](#known-limitations)
+13. [GenAI Contribution Statement](#genai-contribution-statement)
+14. [Statement of Contributions](#statement-of-contributions)
+15. [References](#references)
 
 ---
 
 ## Prerequisites & Installation
 
-**Requirements**: Linux/Unix or WSL, [Miniconda](https://docs.conda.io/en/latest/miniconda.html) or Anaconda, 5–10 GB free disk space
+**Requirements**: Linux/Unix or WSL, [Miniconda](https://docs.conda.io/en/latest/miniconda.html) or Anaconda, mamba, 5–10 GB free disk space
 
 If you don't have conda, install Miniconda first:
 
@@ -35,6 +35,12 @@ If you don't have conda, install Miniconda first:
 wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh
 bash Miniconda3-latest-Linux-x86_64.sh
 source ~/.bashrc
+```
+
+Then install mamba (required — conda alone is too slow for this environment):
+
+```bash
+conda install -n base -c conda-forge mamba
 ```
 
 ### Setup (one time only)
@@ -45,7 +51,7 @@ Run `setup.sh` — it creates the conda environment, applies any runtime fixes, 
 bash setup.sh
 ```
 
-`setup.sh` uses mamba if available (faster) and falls back to conda. It is safe to re-run.
+`setup.sh` requires mamba and will exit with instructions if it is not found. It is safe to re-run.
 
 ---
 
@@ -71,7 +77,7 @@ See `QUICKSTART.md` for a concise reference card.
 
 ## Pipeline Architecture
 
-5 automated stages, organism-agnostic:
+5 automated stages for SARS-CoV-2 genomic surveillance:
 
 ```
 Input FASTQ Files
@@ -159,6 +165,98 @@ BMS503/
 
 ---
 
+## Tool Selection Rationale
+
+Each tool was selected against available alternatives for the specific demands of viral genomic surveillance: speed, correctness on near-haploid genomes, and suitability for Illumina short reads. File types are shown to illustrate how data flows through the pipeline.
+
+### Quality Control — fastp
+
+| | Files |
+|---|---|
+| **Input** | `.fastq.gz` / `.fastq` — raw paired-end or single-end reads |
+| **Output** | `.fastq.gz` (trimmed reads), `.json` (QC metrics), `.html` (QC report) |
+
+**Chosen over**: Trimmomatic, FastQC + Trim Galore
+
+fastp performs adapter trimming, quality filtering, and QC reporting in a single pass, producing structured JSON output that the pipeline parses directly for per-sample QC metrics ([Chen, 2025](#ref-chen-2025)). Trimmomatic requires a separate tool (FastQC) for reporting and outputs plain text; Trim Galore is a wrapper around Cutadapt and FastQC that adds dependencies without adding capability relevant to this workflow. fastp is substantially faster than both alternatives due to multi-threading and a single-pass design.
+
+### Read Mapping — BWA-MEM2
+
+| | Files |
+|---|---|
+| **Input** | `.fastq.gz` (trimmed reads), `.fasta` (reference genome + index files: `.0123`, `.bwt.2bit.64`, `.amb`, `.ann`, `.pac`) |
+| **Output** | `.bam` (sorted aligned reads) |
+
+**Chosen over**: BWA (0.7.17), Bowtie2, Minimap2
+
+BWA-MEM2 is the direct successor to BWA-MEM, producing identical alignments while running ~3× faster through SIMD vectorisation ([Vasimuddin et al., 2019](#ref-vasimuddin-2019)). It is the established standard for Illumina short-read mapping in variant-calling workflows. Bowtie2 is optimised for RNA-seq and has lower sensitivity for structural variants. Minimap2 is designed for long reads (ONT/PacBio) and is not recommended for Illumina short reads.
+
+### BAM Processing — SAMtools
+
+| | Files |
+|---|---|
+| **Input** | `.bam` (sorted alignments) |
+| **Output** | `.bam.bai` (index), `.flagstat` (mapping statistics), `.coverage.txt` (depth and breadth per position) |
+
+**Chosen over**: Picard, sambamba
+
+SAMtools is the de facto standard for BAM manipulation in bioinformatics pipelines, maintained by the same team as bcftools and sharing a common C library (htslib) ([Danecek et al., 2021](#ref-danecek-2021)). This tight integration eliminates format-conversion overhead between the mapping and variant-calling stages. Picard is Java-based (slower startup, higher memory overhead) and primarily targets duplicate marking, which is not required for viral surveillance. sambamba offers faster sorting but lacks the breadth of utilities SAMtools provides.
+
+### Variant Calling — bcftools
+
+| | Files |
+|---|---|
+| **Input** | `.bam` + `.bam.bai` (indexed alignments), `.fasta` (reference) |
+| **Output** | `.vcf.gz` (compressed variant calls), `.vcf.gz.csi` (index) |
+
+**Chosen over**: GATK HaplotypeCaller, FreeBayes, DeepVariant
+
+bcftools mpileup/call is optimised for haploid and near-haploid genomes — the correct model for viral surveillance, where a single consensus sequence per sample is the target ([Danecek et al., 2021](#ref-danecek-2021)). GATK HaplotypeCaller is designed for diploid human genomes and introduces unnecessary complexity (gVCF mode, joint genotyping) for this use case. FreeBayes supports haploid mode but is significantly slower. DeepVariant requires GPU resources and is trained on human germline data, making it poorly suited for viral sequencing.
+
+### Consensus Generation — bcftools consensus
+
+| | Files |
+|---|---|
+| **Input** | `.vcf.gz` (variant calls), `.fasta` (reference) |
+| **Output** | `.fasta` (per-sample consensus sequence) |
+
+Variant calls are applied to the reference sequence to produce a per-sample consensus FASTA. Samples with zero variants (failed mapping or poor coverage) fall back to a reference copy rather than crashing, which allows the pipeline to continue and flag those samples in the QC report.
+
+### Alignment & Lineage Assignment — Nextclade
+
+| | Files |
+|---|---|
+| **Input** | `.fasta` (all consensus sequences, multi-sample) |
+| **Output** | `.fasta` (reference-guided multiple sequence alignment), `.tsv` (lineage assignments, QC flags, mutation calls) |
+
+**Chosen over**: MAFFT + Pangolin (separate tools), Augur
+
+Nextclade performs reference-guided multiple sequence alignment and Pango lineage assignment in a single step, using curated datasets maintained by the Nextstrain team ([Aksamentov et al., 2021](#ref-aksamentov-2021)). Running MAFFT and Pangolin separately would require two tool invocations, an intermediate file, and separate dataset management. Augur (the Nextstrain CLI) offers similar functionality but is designed for the full Nextstrain pipeline and carries more dependencies than are needed here.
+
+### Phylogenetic Tree Inference — VeryFastTree
+
+| | Files |
+|---|---|
+| **Input** | `.fasta` (multiple sequence alignment from Nextclade) |
+| **Output** | `.nwk` (Newick format phylogenetic tree), `.svg` (tree visualisation) |
+
+**Chosen over**: IQ-TREE2, RAxML-NG, FastTree2
+
+VeryFastTree is a multi-threaded reimplementation of FastTree2 that uses the GTR+CAT model — appropriate for surveillance-scale datasets where speed and scalability matter more than exhaustive model selection ([Piñeiro et al., 2020](#ref-pineiro-2020); [Piñeiro & Pichel, 2024](#ref-pineiro-2024)). FastTree2 itself is single-threaded and does not scale to all available cores. IQ-TREE2 provides better statistical support (proper ultrafast bootstrap) and automatic model selection via ModelFinder, but is 3–10× slower for equivalent sample counts; for 17 SARS-CoV-2 samples this adds roughly 1–5 minutes to the tree step. RAxML-NG is similarly rigorous and similarly slower. For formal publication-quality phylogenetics, IQ-TREE2 would be the preferred choice.
+
+### Workflow Orchestration — Snakemake
+
+| | Files |
+|---|---|
+| **Input** | `Snakefile` (workflow rules), `config/config.yaml` (parameters), `config/env_all.yml` (environment) |
+| **Output** | Coordinates all stages; produces no files directly |
+
+**Chosen over**: Nextflow, Make
+
+Snakemake is Python-based, making it directly accessible to bioinformaticians already using Python, and integrates natively with conda environments — allowing the entire tool stack to be declared in a single `env_all.yml` and activated automatically ([Mölder et al., 2021](#ref-molder-2021)). Its rule-based, file-driven execution model means only rules whose inputs have changed are re-run, which is critical for iterative surveillance workflows where new samples are added to an existing dataset. Nextflow uses a Groovy DSL that is less familiar and requires more boilerplate for conda integration. Make lacks conda awareness and is not designed for bioinformatics scheduling.
+
+---
+
 ## Prepare Your Data
 
 ### FASTQ files → `data/raw/`
@@ -182,15 +280,14 @@ Supported: `.fasta`, `.fa`, `.fna`, `.ffn`
 
 ### Verify setup
 
-Run `bash setup.sh` — it is safe to re-run and will report whether the environment already exists.
+Quick checks before running:
 
-Expected:
+```bash
+ls data/raw/*.fastq.gz        # Should list your FASTQ files
+ls data/reference/*.fasta     # Should show NC_045512.fasta (or similar)
 ```
-✅ FASTQ files: X file(s) found
-✅ Reference genome: 1 file(s) found
-✅ Configuration: config/config.yaml exists
-✅ Pipeline: Snakefile ready
-```
+
+`run_pipeline.sh` will report what it finds and exit with a clear message if anything is missing.
 
 ---
 
@@ -241,158 +338,30 @@ Open `results/reports/diagnostic_report.html` in your browser for the full analy
 
 ## Configuration
 
-Edit `config/config.yaml`:
+The pipeline is pre-configured for SARS-CoV-2 Illumina short-read data. The defaults in `config/config.yaml` are set for SARS-CoV-2 and do not need to be changed for standard runs.
 
-```yaml
-# Organism name (shown in report)
-organism: "SARS-CoV-2"
+### QC and variant calling thresholds
 
-# QC thresholds (adjust for organism and platform)
-qc_thresholds:
-  min_read_length: 50       # Minimum read length (bp)
-  min_mean_quality: 30      # Phred quality score
-  max_n_content: 5          # Max % N bases
-  min_mapped_reads: 50      # Min % reads mapped (post-mapping gate)
-```
+| Parameter | Default | Basis |
+|-----------|---------|-------|
+| `min_read_length` | 50 bp | See below |
+| `min_q30_pct` | 75% | See below |
+| `min_mapped_reads` | 50% | See below |
+| `min_allele_frequency` | 0.1 (10%) | See below |
 
----
+### Threshold rationale and sources
 
-## Organism Guide
+**`min_read_length: 50 bp`**
+Illumina paired-end reads for SARS-CoV-2 are typically 150–250 bp. A 50 bp minimum discards adapter dimers and severely degraded fragments while retaining all reads of biological value. This is consistent with the ARTIC Network SARS-CoV-2 sequencing protocol ([Tyson et al., 2020](#ref-tyson-2020)) and the PHA4GE bioinformatics pipeline recommendations for SARS-CoV-2 ([Griffiths et al., 2022](#ref-griffiths-2022)), and is widely adopted in published surveillance pipelines including the COVID-19 Genomics UK (COG-UK) consortium workflow ([COVID-19 Genomics UK Consortium, 2020](#ref-coguk-2020)).
 
-Only three things change between organisms: the organism name in config, the QC thresholds, and the reference genome.
+**`min_q30_pct: 75%`**
+Illumina's platform specification defines a passing run as one in which ≥75% of bases achieve Phred quality Q30 (1 error per 1,000 bases). This threshold is cited in the WHO *Genomic Sequencing of SARS-CoV-2* guidance ([World Health Organization, 2021](#ref-who-2021)) as the recommended base-quality standard for surveillance sequencing, and is consistent with PHA4GE quality control recommendations for pathogen genomic data ([Griffiths et al., 2022](#ref-griffiths-2022)).
 
-### Switching organisms
+**`min_mapped_reads: 50%`**
+The WHO ([World Health Organization, 2021](#ref-who-2021)) and COG-UK sequencing standards recommend a minimum mapping rate of 70–80% for a high-quality sample. The pipeline uses 50% as the minimum fail gate — samples between 50–70% are flagged for review but not discarded, acknowledging that samples with lower viral load or partial degradation may still yield usable consensus sequences. Samples below 50% are failed at the post-mapping QC gate, consistent with PHA4GE guidance on minimum data quality for inclusion in genomic epidemiology analyses ([Griffiths et al., 2022](#ref-griffiths-2022)).
 
-1. Update `config/config.yaml`
-2. Place the correct reference in `data/reference/`
-3. Place your FASTQ files in `data/raw/`
-4. Run: `./run_pipeline.sh`
-
-### Virus configurations
-
-#### SARS-CoV-2 (genome ~29.9 kb, Illumina/ONT)
-```yaml
-organism: "SARS-CoV-2"
-qc_thresholds:
-  min_read_length: 50
-  min_mean_quality: 30
-  max_n_content: 5
-  min_mapped_reads: 50
-```
-Reference: NCBI NC_045512.2 (Wuhan-Hu-1)
-
-#### Influenza A/B (genome ~13.6 kb, 8 segments)
-```yaml
-organism: "Influenza A/H1N1"
-qc_thresholds:
-  min_read_length: 40
-  min_mean_quality: 28
-  max_n_content: 5
-  min_mapped_reads: 50
-```
-Reference: NCBI FluSurver / WHO FluNet  
-Note: 8 RNA segments — consider analysing each separately or concatenated.
-
-#### Monkeypox (genome ~197 kb)
-```yaml
-organism: "Monkeypox virus (MPXV)"
-qc_thresholds:
-  min_read_length: 75
-  min_mean_quality: 30
-  max_n_content: 3
-  min_mapped_reads: 60
-```
-Reference: NCBI NC_063383.1
-
-#### Ebola (genome ~19 kb)
-```yaml
-organism: "Ebola virus (EBOV)"
-qc_thresholds:
-  min_read_length: 50
-  min_mean_quality: 30
-  max_n_content: 5
-  min_mapped_reads: 50
-```
-
-### Bacteria configurations
-
-#### Mycobacterium tuberculosis (genome ~4.4 Mb, high GC ~65%)
-```yaml
-organism: "Mycobacterium tuberculosis"
-qc_thresholds:
-  min_read_length: 100
-  min_mean_quality: 32
-  max_n_content: 2
-  min_mapped_reads: 60
-```
-Reference: NCBI NC_000962.3 (H37Rv)
-
-#### Salmonella enterica (genome ~4.6–4.9 Mb)
-```yaml
-organism: "Salmonella enterica"
-qc_thresholds:
-  min_read_length: 80
-  min_mean_quality: 30
-  max_n_content: 3
-  min_mapped_reads: 55
-```
-
-#### Escherichia coli (genome ~4.6 Mb)
-```yaml
-organism: "Escherichia coli"
-qc_thresholds:
-  min_read_length: 75
-  min_mean_quality: 30
-  max_n_content: 3
-  min_mapped_reads: 55
-```
-
-### Fungi configurations
-
-#### Candida auris (genome ~12 Mb)
-```yaml
-organism: "Candida auris"
-qc_thresholds:
-  min_read_length: 100
-  min_mean_quality: 30
-  max_n_content: 3
-  min_mapped_reads: 60
-```
-
-### QC thresholds by platform
-
-| Platform | min_read_length | min_mean_quality |
-|----------|-----------------|------------------|
-| Illumina (short-read) | 50–100 bp | 30–35 |
-| Oxford Nanopore | 5000 bp | 10–15 |
-| PacBio | 5000 bp | 20–25 |
-
-### QC thresholds by genome size
-
-| Genome size | min_read_length | min_mean_quality | max_n_content |
-|------------|-----------------|------------------|---------------|
-| < 20 kb (viruses) | 40–50 bp | 28–30 | 5% |
-| 20–100 kb (large viruses) | 50–75 bp | 30–32 | 3–5% |
-| 1–5 Mb (bacteria) | 75–100 bp | 30–32 | 2–3% |
-| 5–20 Mb (fungi) | 100–150 bp | 30–32 | 2% |
-
-### Performance by organism (16 vCPUs, observed)
-
-| Organism | Genome size | Samples | Total time |
-|----------|------------|---------|------------|
-| SARS-CoV-2 | 29.9 kb | 16 | ~2 min 30s |
-| SARS-CoV-2 | 29.9 kb | 27 | ~2 min 50s |
-| Influenza | 13.6 kb | — | Expected faster (smaller genome) |
-| M. tuberculosis | 4.4 Mb | — | Significantly longer (150× larger genome) |
-| Candida auris | 12 Mb | — | Significantly longer (400× larger genome) |
-
-Timings for non-SARS-CoV-2 organisms are estimates; actual runtime scales with genome size and read depth.
-
-### Where to find reference genomes
-
-- NCBI GenBank / RefSeq: https://www.ncbi.nlm.nih.gov/
-- GISAID (respiratory viruses): https://www.gisaid.org/
-- European Nucleotide Archive: https://www.ebi.ac.uk/ena/
+**`min_allele_frequency: 0.1`**
+A 10% allele frequency threshold is standard for SARS-CoV-2 variant calling. The ARTIC amplicon sequencing pipeline ([Tyson et al., 2020](#ref-tyson-2020)) and Nextstrain analysis workflows apply a 5–10% minor allele frequency filter to distinguish true low-frequency variants from Illumina sequencing error, which has a typical substitution error rate of ~0.1–1% per base ([Schirmer et al., 2016](#ref-schirmer-2016)). A 10% threshold provides a conservative margin above the instrument noise floor while capturing genuine variants.
 
 ---
 
@@ -451,33 +420,6 @@ Placing `data/` on SSD or NVMe gives the biggest single-hardware improvement for
 To inspect or adjust per-stage thread counts:
 ```bash
 grep -n "threads:" Snakefile
-```
-
----
-
-## Running Multiple Datasets
-
-### Sequential
-
-```bash
-# Dataset 1
-./run_pipeline.sh
-
-# Clear and reload for Dataset 2
-snakemake --delete-all-output
-rm data/raw/* data/reference/*
-cp dataset2/*.fastq.gz data/raw/
-cp dataset2/reference.fasta data/reference/
-sed -i 's/organism: .*/organism: "Influenza A\/H1N1"/' config/config.yaml
-./run_pipeline.sh
-```
-
-### Parallel (separate directories)
-
-```bash
-cp -r . ../BMS503_covid
-cp -r . ../BMS503_flu
-# Analyse each organism in its own directory
 ```
 
 ---
@@ -549,7 +491,7 @@ git push
 ### Distribution checklist
 
 - [ ] Run `bash setup.sh` on target machine (creates env + fixes permissions)
-- [ ] `config/config.yaml` has correct organism and thresholds
+- [ ] `config/config.yaml` thresholds are appropriate for your samples
 - [ ] Tested on a fresh system
 - [ ] `.gitignore` prevents large data commits
 
@@ -568,17 +510,14 @@ git push
 - Test: `head -n 5 data/reference/*`
 
 ### "Snakemake not found" or "Tool not found" (bwa-mem2, samtools, fastp, etc.)
-The `bms503-all` environment may not have been created yet:
+The `bms503-all` environment may not have been created yet. Re-run setup:
 ```bash
-mamba env create -f config/env_all.yml
-# or force-overwrite an existing one:
-mamba env create -f config/env_all.yml --force
+bash setup.sh
 ```
-
-### "Conda environment creation fails"
+To force-recreate an existing but broken environment:
 ```bash
-conda update -n base conda
-mamba env create -f config/env_all.yml   # Re-create the environment
+conda env remove -n bms503-all
+bash setup.sh
 ```
 
 ### Out of memory / CPU maxed
@@ -598,7 +537,7 @@ df -h       # Check disk
 Force a fresh environment:
 ```bash
 conda env remove -n bms503-all
-mamba env create -f config/env_all.yml
+bash setup.sh
 ./run_pipeline.sh
 ```
 
@@ -610,12 +549,12 @@ qc_thresholds:
 ```
 
 ### Very few variants called
-Choose a closer reference genome, or relax variant calling thresholds in config.yaml.
+Ensure the reference genome is NC_045512.2 (Wuhan-Hu-1). If correct, the sample may be highly similar to the reference — check coverage depth in `results/mapping/*.coverage.txt`.
 
 ### Low mapping rate
-Check reference is appropriate:
+Confirm the reference is NC_045512.2 (SARS-CoV-2 Wuhan-Hu-1):
 ```bash
-head -n 2 data/reference/reference_genome.fasta
+head -n 1 data/reference/*.fasta          # Should show >NC_045512.2
 samtools flagstat results/mapping/sample.bam
 ```
 
@@ -633,7 +572,7 @@ nextclade --version
 
 - **VeryFastTree**: Infers trees using the GTR+CAT model, which approximates rate variation across sites. Bootstrap values are localSH-like supports, not traditional bootstrap replicates. Results are appropriate for surveillance and epidemiological clustering but should be interpreted with caution for formal phylogenetic inference.
 - **Samples with 0 variants**: May indicate poor mapping or failed QC — correctly identified by the post-mapping QC gate.
-- **Nextclade lineage assignment**: Only works for organisms with an available Nextclade dataset (SARS-CoV-2, Influenza, RSV, etc.). For other organisms, the alignment stage still runs but lineage fields will be empty.
+- **Nextclade lineage assignment**: Uses the SARS-CoV-2 dataset downloaded by `setup.sh`. Pango lineage fields will be empty for samples that fail Nextclade's internal QC (e.g. very low coverage or highly divergent sequences).
 
 ### Success indicators
 
@@ -695,3 +634,33 @@ Member Name: [Name]
 
 **Last Updated**: May 19, 2026  
 **Pipeline version**: v1.8
+
+---
+
+## References
+
+<a id="ref-aksamentov-2021"></a>Aksamentov, I., Roemer, C., Hodcroft, E. B., & Neher, R. A. (2021). Nextclade: Clade assignment, mutation calling and quality control for viral genomes. *Journal of Open Source Software*, *6*(67), Article 3773. https://doi.org/10.21105/joss.03773
+
+<a id="ref-chen-2025"></a>Chen, S. (2025). fastp 1.0: An ultra-fast all-round tool for FASTQ data quality control and preprocessing. *iMeta*, *4*(5), Article e70078. https://doi.org/10.1002/imt2.70078
+
+<a id="ref-cock-2009"></a>Cock, P. J. A., Antao, T., Chang, J. T., Chapman, B. A., Cox, C. J., Dalke, A., Friedberg, I., Hamelryck, T., Kauff, F., Wilczynski, B., & de Hoon, M. J. L. (2009). Biopython: Freely available Python tools for computational molecular biology and bioinformatics. *Bioinformatics*, *25*(11), 1422–1423. https://doi.org/10.1093/bioinformatics/btp163
+
+<a id="ref-coguk-2020"></a>COVID-19 Genomics UK (COG-UK) Consortium. (2020). An integrated national scale SARS-CoV-2 genomic surveillance network. *The Lancet Microbe*, *1*(3), e99–e100. https://doi.org/10.1016/S2666-5247(20)30054-9
+
+<a id="ref-danecek-2021"></a>Danecek, P., Bonfield, J. K., Liddle, J., Marshall, J., Ohan, V., Pollard, M. O., Whitwham, A., Keane, T., McCarthy, S. A., Davies, R. M., & Li, H. (2021). Twelve years of SAMtools and BCFtools. *GigaScience*, *10*(2), Article giab008. https://doi.org/10.1093/gigascience/giab008
+
+<a id="ref-griffiths-2022"></a>Griffiths, E. J., Timme, R. E., Page, A. J., Alikhan, N.-F., Fornika, D., Maguire, F., Mendes, C. I., Tausch, S. H., Black, A., Connor, T. R., Tyson, G. H., Aanensen, D. M., Alcock, B., Campos, J., Christoffels, A., da Silva, A. G., Grunt, S., Haas, W., Hodcroft, E. B., & Hsiao, W. W. L. (2022). The PHA4GE SARS-CoV-2 contextual data specification for open genomic epidemiology. *GigaScience*, *11*, giac003. https://doi.org/10.1093/gigascience/giac003
+
+<a id="ref-molder-2021"></a>Mölder, F., Jablonski, K. P., Letcher, B., Hall, M. B., Tomkins-Tinch, C. H., Sochat, V., Forster, J., Lee, S., Twardziok, S. O., Kanitz, A., Wilm, A., Holtgrewe, M., Rahmann, S., Nahnsen, S., & Köster, J. (2021). Sustainable data analysis with Snakemake. *F1000Research*, *10*, Article 33. https://doi.org/10.12688/f1000research.29032.2
+
+<a id="ref-pineiro-2020"></a>Piñeiro, C., Abuín, J. M., & Pichel, J. C. (2020). VeryFastTree: Speeding up the estimation of phylogenies for large alignments through parallelization and vectorization strategies. *Bioinformatics*, *36*(17), 4658–4659. https://doi.org/10.1093/bioinformatics/btaa582
+
+<a id="ref-pineiro-2024"></a>Piñeiro, C., & Pichel, J. C. (2024). Efficient phylogenetic tree inference for massive taxonomic datasets: Harnessing the power of a server to analyze 1 million taxa. *GigaScience*, *13*, 1–12. https://doi.org/10.1093/gigascience/giae004
+
+<a id="ref-schirmer-2016"></a>Schirmer, M., D'Amore, R., Ijaz, U. Z., Hall, N., & Quince, C. (2016). Illumina error profiles: Resolving fine-scale variation in metagenomic sequencing data. *BMC Bioinformatics*, *17*, Article 125. https://doi.org/10.1186/s12859-016-0984-y
+
+<a id="ref-tyson-2020"></a>Tyson, J. R., James, P., Stoddart, D., Sparks, N., Sherrat, A., Noakes, C. J., & Slater, H. (2020). *Improvements to the ARTIC multiplex PCR method for SARS-CoV-2 genome sequencing using nanopore* [Preprint]. bioRxiv. https://doi.org/10.1101/2020.09.04.283077
+
+<a id="ref-vasimuddin-2019"></a>Vasimuddin, M., Misra, S., Li, H., & Aluru, S. (2019). Efficient architecture-aware acceleration of BWA-MEM for multicore systems. *2019 IEEE International Parallel and Distributed Processing Symposium (IPDPS)*, 314–324. https://doi.org/10.1109/IPDPS.2019.00041
+
+<a id="ref-who-2021"></a>World Health Organization. (2021). *Genomic sequencing of SARS-CoV-2: A guide to implementation for maximum impact on public health*. World Health Organization. https://www.who.int/publications/i/item/9789240018440

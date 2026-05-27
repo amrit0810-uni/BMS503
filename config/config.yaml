@@ -1,12 +1,10 @@
-# BMS503 Pipeline Configuration
-# Modify this file to customize pipeline behavior for any organism/dataset
-# 
-# MINIMUM SETUP: Just drop data and reference files into data/raw/ and data/reference/
-# The pipeline will auto-detect everything!
+# BMS503 Pipeline Configuration — SARS-CoV-2
+# Defaults are set for SARS-CoV-2 Illumina short-read data.
+# MINIMUM SETUP: Drop FASTQ files into data/raw/ and NC_045512.fasta into data/reference/
 
 # Project identification
 project_name: "Genomic Surveillance Analysis"
-organism: "SARS-CoV-2"  # Specify the organism being analyzed (e.g., SARS-CoV-2, Influenza, Monkeypox, etc.)
+organism: "SARS-CoV-2"
 description: "Automated phylogenetic and diagnostic analysis"  # Project description
 
 # Data directories
@@ -20,41 +18,18 @@ reference_dir: "data/reference"
 # OPTION 2: Explicitly specify reference file (uncomment if needed)
 # reference_fasta: "data/reference/reference_genome.fasta"
 
-# Quality Control thresholds (adjust based on your organism and sequencing technology)
+# Quality Control thresholds (tuned for SARS-CoV-2 Illumina short reads)
+# Note: these are documented here for reference; thresholds are applied in
+# workflow/scripts/qc_assessment.py
 qc_thresholds:
-  min_read_length: 50          # Minimum read length in bp (adjust based on sequencing platform)
-  min_mean_quality: 30         # Minimum mean quality score (Phred, typically 30-35)
-  max_n_content: 5             # Maximum percentage of N's (ambiguous bases)
-  min_mapped_reads: 50         # Minimum percentage of reads mapping to reference
-
-# Mapping parameters
-mapping:
-  min_mapping_quality: 20      # Minimum mapping quality
-  min_coverage: 10x            # Minimum coverage depth for consensus calling
+  min_read_length: 50          # Reads shorter than this are discarded by fastp
+  min_q30_pct: 75              # Minimum % of bases with Phred quality ≥30
+  min_mapped_reads: 50         # Minimum % of reads mapping to reference (fail gate)
 
 # Variant calling
 variants:
-  min_variant_quality: 30      # Minimum variant quality
-  min_allele_frequency: 0.1    # Minimum allele frequency
+  min_allele_frequency: 0.1    # Minimum allele frequency for a variant to be retained
 
-# Nextclade dataset (optional — avoids re-downloading on every run)
-# Download once with:
-#   nextclade dataset get --name sars-cov-2 --output-dir data/nextclade_db/sars-cov-2
-# Then set the path below:
-# nextclade_dataset_dir: "data/nextclade_db/sars-cov-2"
-
-# Phylogenetic parameters
-phylogeny:
-  distance_model: "GTR"        # Substitution model for tree building
-  bootstrap_replicates: 100    # Number of bootstrap replicates
-
-# Output settings
-output:
-  report_format: "html"        # Report format: html or txt
-  include_tree_visualization: true
-  contact_info: "BMS503 Team"  # Contact info for reports
-
-# Computational resources
-resources:
-  max_threads: 8
-  max_memory_gb: 16
+# Nextclade dataset — downloaded automatically by setup.sh
+# Falls back to live download if the directory is missing
+nextclade_dataset_dir: "data/nextclade_db/sars-cov-2"

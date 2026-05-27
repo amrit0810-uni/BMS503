@@ -107,9 +107,9 @@ def assess_qc(metrics, mapping_rates, thresholds):
 
 def main():
     thresholds = {
-        "min_read_length": 50,
-        "min_q30_pct": 75,
-        "min_mapped_pct": 20.0,
+        "min_read_length": 50,   # bp — discard reads shorter than this
+        "min_q30_pct": 75,       # % bases with Phred ≥30
+        "min_mapped_pct": 50.0,  # % reads mapped; <50% flags poor sample quality
     }
 
     try:
